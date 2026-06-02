@@ -752,7 +752,7 @@ pub trait Language {
                         .next_back()
                         .and_then(|(idx, ch)| {
                             if is_sentence_terminator(ch) {
-                                Some(trimmed_slice[idx..].to_string())
+                                Some(&trimmed_slice[idx..])
                             } else {
                                 None
                             }
