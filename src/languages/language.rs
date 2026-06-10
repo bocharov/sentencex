@@ -1305,10 +1305,18 @@ pub trait Language {
             return false;
         }
 
-        // Preceding-token rule: trim the initial and any separators
-        // get_last_word splits on (whitespace, `.`, `/`), then take the
-        // trailing word of what's left.
-        let prefix = head[..head.len() - last_word.len()]
+        // Preceding-token rule: trim the initial and any separators.
+        // `get_last_word` trims trailing whitespace before splitting, so
+        // `last_word` is the suffix of `head.trim_end()`, NOT necessarily of
+        // `head` itself (which may end in trailing whitespace, possibly
+        // multi-byte such as U+2009 THIN SPACE). Strip it with `strip_suffix`
+        // to stay on UTF-8 char boundaries — `head[..head.len() - last_word.len()]`
+        // could land inside a multi-byte char and panic
+        // ("byte index N is not a char boundary").
+        let head_trimmed = head.trim_end();
+        let prefix = head_trimmed
+            .strip_suffix(last_word)
+            .unwrap_or(head_trimmed)
             .trim_end_matches(|c: char| c.is_whitespace() || c == '.' || c == '/');
 
         if self
@@ -1705,5 +1713,17 @@ mod tests {
         assert_eq!(lang.get_boundary_extend("　　X"), Some(6));
         assert_eq!(lang.get_boundary_extend(""), Some(0));
         assert_eq!(lang.get_boundary_extend(" foo"), None);
+    }
+
+    #[test]
+    fn segment_handles_trailing_multibyte_whitespace_before_initial() {
+        // Regression: a single uppercase "initial" followed by a multi-byte
+        // whitespace char (U+2009 THIN SPACE) ahead of a `.` terminator made
+        // `is_name_initial_for` slice `head` at `head.len() - last_word.len()`,
+        // a byte index that can land inside a multi-byte char, panicking with
+        // "byte index N is not a char boundary". `segment()` must not panic.
+        let text = "Foo bar A\u{2009}. Next sentence here.";
+        let sentences = crate::segment("en", text);
+        assert!(!sentences.is_empty());
     }
 }
